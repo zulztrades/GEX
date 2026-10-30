@@ -1,0 +1,59 @@
+name: Update GEX levels
+
+# GitHub cron runs in UTC. These times cover both EDT and EST; run.py checks the
+# New York clock and skips anything outside the trading windows, weekends and holidays.
+on:
+  schedule:
+    - cron: "45 12,13 * * 1-5"   # 8:45 AM ET morning run (12:45 UTC in summer, 13:45 in winter)
+    - cron: "0,30 13-21 * * 1-5" # every 30 min; run.py keeps only 9:30 AM - 4:10 PM ET
+  workflow_dispatch:              # "Run workflow" button: updates right away, any time
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gex-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check New York clock
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "mode=manual" >> "$GITHUB_OUTPUT"
+          else
+            python3 run.py --check
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.mode != 'skip'
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        if: steps.gate.outputs.mode != 'skip'
+        run: pip install -r requirements.txt
+
+      - name: Build levels
+        id: build
+        if: steps.gate.outputs.mode != 'skip'
+        run: python run.py ${{ github.event_name == 'workflow_dispatch' && '--force' || '' }}
+
+      # Runs even when the build failed, so the page can show the failure warning.
+      # Each commit also counts as repo activity, so GitHub never disables this schedule.
+      - name: Publish
+        if: always() && steps.gate.outputs.mode != 'skip'
+        run: |
+          git config user.name "gex-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs data
+          if git diff --cached --quiet; then echo "nothing changed"; exit 0; fi
+          git commit -m "GEX update $(TZ=America/New_York date '+%Y-%m-%d %H:%M ET')"
+          for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done

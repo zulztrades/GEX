@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GEX Levels · Zulz Trades</title>
+<meta name="description" content="Daily gamma exposure levels for ES and NQ futures.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+<div class="glow" aria-hidden="true"></div>
+<main class="wrap">
+
+  <header class="top">
+    <a class="brand" href="https://zulztrades.com" aria-label="Zulz Trades">
+      <img src="assets/bull.png" alt="" width="44" height="29">
+      <span><b>ZULZ</b><small>TRADES</small></span>
+    </a>
+    <span class="eyebrow">GEX levels</span>
+  </header>
+
+  <section class="hello">
+    <h1 class="display" id="date">Loading…</h1>
+    <p class="updated" id="updated">&nbsp;</p>
+    <div class="regimes" id="regimes"></div>
+  </section>
+
+  <div id="alerts"></div>
+
+  <section class="cards" id="cards"></section>
+
+  <section class="block">
+    <h2 class="h2">Level ladder</h2>
+    <p class="sub">Where each level sits relative to price, to scale. Mark these in Sierra Chart.</p>
+    <div class="pair" id="ladders"></div>
+  </section>
+
+  <section class="block">
+    <h2 class="h2">GEX by strike</h2>
+    <p class="sub">Dealer gamma at each strike, converted to futures prices. Tap a bar for details.</p>
+    <div class="legend"><span><i class="sw call"></i>Calls</span><span><i class="sw put"></i>Puts</span><span><i class="ln price"></i>Price</span><span><i class="ln flip"></i>Flip</span></div>
+    <div class="pair" id="bars"></div>
+  </section>
+
+  <details class="block how">
+    <summary>How to read this</summary>
+    <dl>
+      <dt>Gamma regime</dt>
+      <dd>Positive gamma means options dealers hedge against the move, which tends to calm price and keep it in a range. Negative gamma means they hedge with the move, which tends to make moves extend.</dd>
+      <dt>Call wall</dt>
+      <dd>The strike with the most call gamma. It often acts as a ceiling or magnet on the way up.</dd>
+      <dt>Put wall</dt>
+      <dd>The strike with the most put gamma. It often acts as a floor or magnet on the way down.</dd>
+      <dt>Zero-gamma flip</dt>
+      <dd>The price where dealer positioning switches from positive to negative gamma. Above it moves tend to slow down, below it they tend to speed up.</dd>
+    </dl>
+  </details>
+
+  <section class="block summary">
+    <h2 class="h2">What you need to know today</h2>
+    <ul id="summary"></ul>
+  </section>
+
+  <p class="note">Options data is about 15 minutes delayed, open interest updates once a day, and positions opened today (including same-day 0DTE trades) aren't included. GEX is context, not a trade signal.</p>
+
+  <footer class="foot">
+    <a class="brand" href="https://zulztrades.com"><img src="assets/bull.png" alt="" width="36" height="24"><span><b>ZULZ</b><small>TRADES</small></span></a>
+    <p><a href="https://zulztrades.com">zulztrades.com</a> · <a href="history.csv">Morning history (CSV)</a></p>
+    <p class="risk">Futures trading involves substantial risk of loss and is not suitable for everyone. This page is for educational purposes only and is not financial advice. Past results do not guarantee future results. Read the full <a href="https://zulztrades.com/disclaimer.html">disclaimer</a>.</p>
+  </footer>
+</main>
+<div class="tip" id="tip" hidden></div>
+<script src="app.js?v=1"></script>
+</body>
+</html>

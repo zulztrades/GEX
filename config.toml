@@ -1,0 +1,54 @@
+# Zulz GEX dashboard settings. Edit values here, nothing else needs to change.
+# Times are New York time (ET). Daylight saving is handled automatically.
+
+[calc]
+max_dte_days = 30          # include option expirations up to this many days out
+profile_range_pct = 4.0    # gamma profile: hypothetical prices +/- this % around spot
+profile_steps = 321        # number of hypothetical prices in that range
+risk_free_rate = 0.04      # used in Black-Scholes
+min_hours_to_expiry = 1.0  # floor so contracts expiring in minutes don't blow up gamma
+secondary_levels = 3       # extra big-gamma strikes listed under the walls
+tick = 0.25                # futures levels are rounded to this
+
+[schedule]
+morning_start = "08:30"    # first window: morning snapshot + open-interest check
+intraday_start = "09:30"   # refresh window start
+intraday_end = "16:10"     # refresh window end (a little after the close)
+oi_retries = 2             # if open interest looks stale in the morning, retry this many times
+oi_retry_wait_min = 4      # minutes between those retries
+
+[sources]
+cboe_url = "https://cdn.cboe.com/api/global/delayed_quotes/options/{symbol}.json"
+
+# One block per instrument. "chains" are tried in order: the first that works is used.
+# conversion "additive": futures = index level + basis (ES settle - index close, prior day)
+# conversion "ratio":    futures = level x (futures settle / ETF close, prior day)
+[instruments.ES]
+root = "ES"
+cnbc_symbol = "@SP.1"
+yahoo_symbol = "ES=F"
+chart_range_pct = 2.0      # bar chart zoom: +/- this % around price
+chains = [
+  { symbol = "_SPX", name = "SPX", conversion = "additive", yahoo_close = "^GSPC", dividend_yield = 0.013, am_roots = ["SPX"] },
+]
+
+[instruments.NQ]
+root = "NQ"
+cnbc_symbol = "@ND.1"
+yahoo_symbol = "NQ=F"
+chart_range_pct = 2.5
+chains = [
+  { symbol = "QQQ", name = "QQQ", conversion = "ratio", yahoo_close = "QQQ", dividend_yield = 0.006, am_roots = [] },
+  { symbol = "_NDX", name = "NDX", conversion = "additive", yahoo_close = "^NDX", dividend_yield = 0.007, am_roots = ["NDX"] },
+]
+
+[calendar]
+# NYSE full-day closures. Add the next year's dates each December.
+holidays = [
+  "2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03", "2026-05-25", "2026-06-19",
+  "2026-07-03", "2026-09-07", "2026-11-26", "2026-12-25",
+  "2027-01-01", "2027-01-18", "2027-02-15", "2027-03-26", "2027-05-31", "2027-06-18",
+  "2027-07-05", "2027-09-06", "2027-11-25", "2027-12-24",
+  "2028-01-17", "2028-02-21", "2028-04-14", "2028-05-29", "2028-06-19", "2028-07-04",
+  "2028-09-04", "2028-11-23", "2028-12-25",
+]
