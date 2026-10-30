@@ -610,6 +610,7 @@
  "conv": {
   "ES": {
    "date": "2026-10-29",
+   "session": "evening",
    "chain": "SPX",
    "type": "additive",
    "value": 33.85986328125,
@@ -620,6 +621,7 @@
   },
   "NQ": {
    "date": "2026-10-29",
+   "session": "evening",
    "chain": "QQQ",
    "type": "ratio",
    "value": 41.32580156313953,

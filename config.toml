@@ -11,9 +11,12 @@ secondary_levels = 3       # extra big-gamma strikes listed under the walls
 tick = 0.25                # futures levels are rounded to this
 
 [schedule]
-morning_start = "08:30"    # first window: morning snapshot + open-interest check
-intraday_start = "09:30"   # refresh window start
-intraday_end = "16:10"     # refresh window end (a little after the close)
+# Your trading windows. Runs happen every 20-30 min inside them.
+morning_start = "08:00"    # pre-open: morning snapshot + open-interest check, ready before 8:30
+rth_start = "09:30"        # from here on, refreshes keep the morning's basis
+day_end = "12:15"          # last daytime refresh (12:00 run, with slack for GitHub delays)
+evening_start = "19:00"    # Globex evening session, Sunday to Thursday
+evening_end = "21:45"
 oi_retries = 2             # if open interest looks stale in the morning, retry this many times
 oi_retry_wait_min = 4      # minutes between those retries
 

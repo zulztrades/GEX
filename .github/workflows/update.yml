@@ -4,13 +4,16 @@ name: Update GEX levels
 # New York clock and skips anything outside the trading windows, weekends and holidays.
 on:
   schedule:
-    - cron: "45 12,13 * * 1-5"   # 8:45 AM ET morning run (12:45 UTC in summer, 13:45 in winter)
-    - cron: "0,30 13-21 * * 1-5" # every 30 min; run.py keeps only 9:30 AM - 4:10 PM ET
+    # Morning 8:00 AM - 12:00 PM ET (every 20 min before the open, then every 30 min)
+    - cron: "0,20,40 12-14 * * 1-5"
+    - cron: "0,30 15-17 * * 1-5"
+    # Evening 7:00 - 9:30 PM ET, Sunday to Thursday (crosses midnight UTC)
+    - cron: "0,30 23 * * 0-4"
+    - cron: "0,30 0-2 * * 1-5"
   workflow_dispatch:              # "Run workflow" button: updates right away, any time
 
 permissions:
   contents: write
-  pages: write
 
 concurrency:
   group: gex-update
@@ -57,8 +60,10 @@ jobs:
           git add docs data
           if git diff --cached --quiet; then echo "nothing changed"; exit 0; fi
           git commit -m "GEX update $(TZ=America/New_York date '+%Y-%m-%d %H:%M ET')"
-          for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done
-          # Bot pushes don't always start a Pages rebuild, so ask for one explicitly.
-          curl -sS -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/pages/builds"
+          # Each push starts a Pages rebuild on its own. Fail loudly if it never lands.
+          for i in 1 2 3; do
+            if git pull --rebase && git push; then exit 0; fi
+            sleep 5
+          done
+          echo "::error::Could not save the new data to the repo"
+          exit 1

@@ -48,9 +48,12 @@ function pageWarnings(d, status) {
   const now = etNow();
   const mins = now.getHours() * 60 + now.getMinutes();
   const ageMin = (Date.now() - new Date(d.updated_et).getTime()) / 60000;
-  const weekday = now.getDay() > 0 && now.getDay() < 6;
-  if (weekday && mins >= 9 * 60 + 15 && mins <= 16 * 60 + 15 && ageMin > 75) {
-    w.push(`Data is ${Math.round(ageMin / 60 * 10) / 10} hours old. Updates may be delayed or the market is closed today.`);
+  // Only nag inside the update windows: 8:30 AM-12:15 PM weekdays, 7:30-9:45 PM Sunday-Thursday
+  const day = now.getDay();
+  const inMorning = day >= 1 && day <= 5 && mins >= 8 * 60 + 30 && mins <= 12 * 60 + 15;
+  const inEvening = day <= 4 && mins >= 19 * 60 + 30 && mins <= 21 * 60 + 45;
+  if ((inMorning || inEvening) && ageMin > 60) {
+    w.push(`Data is ${ageMin < 120 ? Math.round(ageMin) + " minutes" : Math.round(ageMin / 6) / 10 + " hours"} old. Updates may be delayed or the market is closed today.`);
   }
   for (const k of KEYS) {
     if (d.instruments[k]?.oi_status === "unknown" && d.mode !== "manual") {
@@ -62,7 +65,7 @@ function pageWarnings(d, status) {
 
 function render(d, status) {
   $("date").textContent = dateLong(d.date);
-  $("updated").textContent = `Last updated ${timeET(d.updated_et)}`;
+  $("updated").textContent = `Last updated ${timeET(d.updated_et)}${d.mode === "evening" ? " · Evening session" : ""}`;
   $("regimes").innerHTML = KEYS.map((k) => {
     const i = d.instruments[k];
     return `<div class="badge ${i.regime === "positive" ? "pos" : "neg"}"><div class="sym">${k} · ${i.contract}</div><div class="val">${regimeWord(i.regime)}</div></div>`;

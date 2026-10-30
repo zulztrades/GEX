@@ -41,24 +41,31 @@ def save_json(path, obj):
 def decide_mode(now, cfg, force):
     s = cfg["schedule"]
     t = now.strftime("%H:%M")
-    trading_day = now.weekday() < 5 and now.date().isoformat() not in cfg["calendar"]["holidays"]
-    if trading_day and s["morning_start"] <= t < s["intraday_start"]:
+    not_holiday = now.date().isoformat() not in cfg["calendar"]["holidays"]
+    trading_day = now.weekday() < 5 and not_holiday
+    evening_day = now.weekday() in (6, 0, 1, 2, 3) and not_holiday  # Sunday-Thursday nights
+    if trading_day and s["morning_start"] <= t < s["rth_start"]:
         return "morning"
-    if trading_day and s["intraday_start"] <= t <= s["intraday_end"]:
+    if trading_day and s["rth_start"] <= t <= s["day_end"]:
         return "intraday"
+    if evening_day and s["evening_start"] <= t <= s["evening_end"]:
+        return "evening"
     return "manual" if force else "skip"
 
 
 def get_conversion(key, ch, quote, meta, mode, state, today):
-    """Basis (ES) or ratio (NQ from QQQ), fixed from the prior day's settlement and held all day."""
+    """Basis (ES) or ratio (NQ from QQQ) from the latest settlement, held for the whole session.
+    Daytime uses the prior day's settle; evening uses that afternoon's settle."""
     import gex
+    session = "evening" if mode == "evening" else "day"
     saved = state.get("conv", {}).get(key)
-    if mode == "intraday" and saved and saved["date"] == today and saved["chain"] == ch["name"]:
+    if (mode in ("intraday", "evening") and saved and saved["date"] == today
+            and saved["chain"] == ch["name"] and saved.get("session") == session):
         return saved
     close, close_src = gex.index_close(ch["yahoo_close"], quote["settle_date"], meta)
     value = quote["settle"] - close if ch["conversion"] == "additive" else quote["settle"] / close
     conv = {
-        "date": today, "chain": ch["name"], "type": ch["conversion"], "value": value,
+        "date": today, "session": session, "chain": ch["name"], "type": ch["conversion"], "value": value,
         "settle": quote["settle"], "settle_date": quote["settle_date"],
         "index_close": close, "close_source": close_src,
     }
@@ -161,8 +168,11 @@ def write_history(data, mode):
         with path.open(newline="", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
     today = data["date"]
-    has_today = any(r["date"] == today for r in rows)
-    if mode == "manual" or (mode == "intraday" and has_today):
+    existing = next((r for r in rows if r["date"] == today), None)
+    if mode in ("manual", "evening") or (mode == "intraday" and existing):
+        return
+    # keep the first morning snapshot unless its open interest wasn't confirmed fresh
+    if mode == "morning" and existing and existing["es_oi"] == "fresh" and existing["nq_oi"] == "fresh":
         return
     es, nq = data["instruments"]["ES"], data["instruments"]["NQ"]
     row = {
@@ -199,7 +209,9 @@ def main():
     status.update({"last_attempt_et": now.isoformat(timespec="seconds"), "mode": mode})
     state = load_json(STATE, {})
     today = now.date().isoformat()
-    if state.get("oi_last_date") != today:  # first run of a new day: yesterday's OI becomes the comparison
+    # First daytime run of a new day: yesterday's OI becomes the comparison. Evening runs reuse
+    # the day's comparison, since OI doesn't change after the close.
+    if mode != "evening" and state.get("oi_last_date") != today:
         state["oi_prev"] = state.get("oi_last", {})
         state["oi_last_date"] = today
 
