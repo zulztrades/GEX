@@ -1,0 +1,2 @@
+date,time_et,es_contract,es_price,es_regime,es_flip,es_call_wall,es_put_wall,nq_contract,nq_price,nq_regime,nq_flip,nq_call_wall,nq_put_wall,es_oi,nq_oi,warnings
+2026-10-30,08:43,ESZ26,7670.5,negative,7759.25,7733.75,7683.75,NQZ26,28794.75,negative,29682.5,29754.5,28928.0,fresh,fresh,
