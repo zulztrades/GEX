@@ -3,3 +3,4 @@ date,time_et,es_contract,es_price,es_regime,es_flip,es_call_wall,es_put_wall,nq_
 2026-11-02,09:15,ESZ26,7651.0,negative,7714.75,7734.0,7634.0,NQZ26,28756.0,negative,29382.25,28927.0,28100.5,stale,fresh,ES: SPX open interest looks unchanged from yesterday. Walls may reflect yesterday's positioning.
 2026-11-03,09:05,ESZ26,7586.25,negative,7694.75,7733.0,7533.0,NQZ26,28322.75,negative,29449.0,28908.5,28082.5,fresh,fresh,
 2026-11-04,09:07,ESZ26,7684.75,negative,7694.0,7727.75,7727.75,NQZ26,28409.25,negative,29262.5,28913.75,28087.75,fresh,fresh,
+2026-11-05,09:07,ESZ26,7724.0,negative,7725.75,7732.0,7732.0,NQZ26,28299.0,negative,28930.0,28899.0,28073.5,fresh,fresh,
