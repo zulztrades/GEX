@@ -9,3 +9,4 @@ date,time_et,es_contract,es_price,es_regime,es_flip,es_call_wall,es_put_wall,nq_
 2026-11-10,09:05,ESZ26,7523.5,negative,7636.0,7724.25,7524.25,NQZ26,27676.75,negative,28256.0,28041.25,28041.25,fresh,fresh,
 2026-11-11,09:13,ESZ26,7618.0,negative,7622.25,7723.25,7523.25,NQZ26,28370.5,positive,28309.0,28876.5,28051.5,fresh,fresh,
 2026-11-12,09:18,ESZ26,7596.25,negative,7638.5,7721.0,7521.0,NQZ26,28117.0,negative,28531.25,28870.0,28045.25,fresh,fresh,
+2026-11-13,09:10,ESZ26,7646.0,negative,7647.5,7722.75,7622.75,NQZ26,28421.75,negative,28531.5,28872.5,28253.75,fresh,fresh,
