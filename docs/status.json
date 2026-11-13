@@ -1,7 +1,7 @@
 {
- "last_attempt_et": "2026-11-12T11:52:36-05:00",
- "mode": "intraday",
+ "last_attempt_et": "2026-11-12T19:46:53-05:00",
+ "mode": "evening",
  "ok": true,
  "error": null,
- "last_success_et": "2026-11-12T11:52:39-05:00"
+ "last_success_et": "2026-11-12T19:46:57-05:00"
 }
