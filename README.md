@@ -4,9 +4,9 @@ A free gamma exposure (GEX) dashboard for ES and NQ futures. It updates itself e
 
 ## How it works
 
-1. **8:45 AM ET:** GitHub runs `run.py`. It downloads the delayed SPX and QQQ option chains from CBOE and the ES/NQ futures prices from CNBC (Yahoo is the backup). It checks that open interest is new for today, works out the walls, the flip and the regime, and saves a snapshot to `docs/history.csv`.
-2. **9:30 AM to 4:00 PM ET, every 30 min:** the same steps run again, keeping the morning's basis.
-3. Each run commits the new `docs/data.json`. GitHub Pages serves the `docs/` folder as the website.
+1. GitHub starts `run.py --loop` before each trading window (8:00 AM - 12:15 PM ET weekdays, 7:00 - 9:45 PM ET Sunday to Thursday). It waits for the window, then refreshes every 15 minutes until it closes.
+2. Each refresh downloads the delayed SPX and QQQ option chains from Yahoo (CBOE blocked automated access on Nov 19, 2026) and the newest ES/NQ futures price from CNBC or Yahoo. It checks that open interest is new for today and works out the walls, the flip and the regime. The first good morning refresh is saved to `docs/history.csv`.
+3. Each refresh commits the new `docs/data.json`. GitHub Pages serves the `docs/` folder as the website.
 
 Weekends and NYSE holidays are skipped (the list is in `config.toml`). Daylight saving is handled by checking the New York clock on every run.
 
@@ -15,7 +15,8 @@ Weekends and NYSE holidays are skipped (the list is in `config.toml`). Daylight 
 | File | What it is |
 |---|---|
 | `config.toml` | All settings: days to expiry (30), profile range (±4%), chart zoom, schedule windows, holidays |
-| `gex.py` | Data downloads and the gamma math |
+| `chain.py` | Downloads the option chains and works out implied vol |
+| `gex.py` | Futures prices, contract calendar and the gamma math |
 | `run.py` | Runs everything and writes the files the page reads |
 | `docs/` | The website (index.html, style.css, app.js) plus `data.json`, `status.json`, `history.csv` |
 | `data/state.json` | Memory between runs: today's basis and yesterday's open interest, used for the stale check |

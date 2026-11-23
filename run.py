@@ -2,12 +2,14 @@
 
     python run.py           normal scheduled run (decides by ET clock whether to do anything)
     python run.py --force   run now regardless of the clock
-    python run.py --check   only print what mode this run would be (used by the workflow)
+    python run.py --check   only print whether there is anything to do (used by the workflow)
+    python run.py --loop    stay on for the whole session and refresh on a timer (used by the workflow)
 """
 import csv
 import datetime as dt
 import json
 import os
+import subprocess
 import sys
 import time
 import tomllib
@@ -38,11 +40,15 @@ def save_json(path, obj):
     Path(path).write_text(json.dumps(obj, indent=1), encoding="utf-8")
 
 
+def is_trading_day(now, cfg):
+    return now.weekday() < 5 and now.date().isoformat() not in cfg["calendar"]["holidays"]
+
+
 def decide_mode(now, cfg, force):
     s = cfg["schedule"]
     t = now.strftime("%H:%M")
     not_holiday = now.date().isoformat() not in cfg["calendar"]["holidays"]
-    trading_day = now.weekday() < 5 and not_holiday
+    trading_day = is_trading_day(now, cfg)
     evening_day = now.weekday() in (6, 0, 1, 2, 3) and not_holiday  # Sunday-Thursday nights
     if trading_day and s["morning_start"] <= t < s["rth_start"]:
         return "morning"
@@ -53,7 +59,7 @@ def decide_mode(now, cfg, force):
     return "manual" if force else "skip"
 
 
-def get_conversion(key, ch, quote, meta, mode, state, today):
+def get_conversion(key, ch, quote, mode, state, today, warnings):
     """Basis (ES) or ratio (NQ from QQQ) from the latest settlement, held for the whole session.
     Daytime uses the prior day's settle; evening uses that afternoon's settle."""
     import gex
@@ -62,38 +68,37 @@ def get_conversion(key, ch, quote, meta, mode, state, today):
     if (mode in ("intraday", "evening") and saved and saved["date"] == today
             and saved["chain"] == ch["name"] and saved.get("session") == session):
         return saved
-    close, close_src = gex.index_close(ch["yahoo_close"], quote["settle_date"], meta)
+    close, close_date = gex.index_close(ch["yahoo_close"], quote["settle_date"])
+    if close_date != quote["settle_date"]:
+        warnings.append(f"{key}: no {ch['name']} close for {quote['settle_date']}, used {close_date}. Levels can be off by that day's move.")
     value = quote["settle"] - close if ch["conversion"] == "additive" else quote["settle"] / close
     conv = {
         "date": today, "session": session, "chain": ch["name"], "type": ch["conversion"], "value": value,
         "settle": quote["settle"], "settle_date": quote["settle_date"],
-        "index_close": close, "close_source": close_src,
+        "index_close": close, "close_source": "Yahoo",
     }
     state.setdefault("conv", {})[key] = conv
     return conv
 
 
 def build_instrument(key, icfg, cfg, now, mode, state, warnings):
+    import chain
     import gex
     calc, today = cfg["calc"], now.date()
 
-    quote, qerr = gex.futures_quote(icfg, now)
-    if qerr:
-        warnings.append(f"{key}: main futures price source failed, used {quote['source']} instead.")
+    quote = gex.futures_quote(icfg, now)
+    if quote["age_min"] > 30:
+        warnings.append(f"{key}: the newest futures price available is {quote['age_min']:.0f} minutes old.")
 
     chain_errors = []
-    attempts = 1 + (cfg["schedule"]["oi_retries"] if mode == "morning" else 0)
     for ch in icfg["chains"]:
         try:
-            for attempt in range(attempts):
-                meta, options = gex.fetch_chain(ch["symbol"], cfg["sources"]["cboe_url"])
-                c = gex.parse_chain(options, now, calc["max_dte_days"], calc["min_hours_to_expiry"], ch["am_roots"])
-                fp = gex.oi_fingerprint(c, today)
-                stale = gex.oi_is_stale(fp, state.get("oi_prev", {}).get(ch["name"]))
-                if not stale or attempt == attempts - 1:
-                    break
-                print(f"{ch['name']} open interest looks stale, retrying in {cfg['schedule']['oi_retry_wait_min']} min")
-                time.sleep(cfg["schedule"]["oi_retry_wait_min"] * 60)
+            meta, options, curves = chain.fetch_chain(ch["symbol"], now, calc["max_dte_days"], calc["risk_free_rate"],
+                                                      ch["dividend_yield"], ch["am_roots"], is_trading_day(now, cfg),
+                                                      state.get("curves", {}).get(ch["name"], {}))
+            c = gex.parse_chain(options, now, calc["max_dte_days"], calc["min_hours_to_expiry"], ch["am_roots"])
+            fp = gex.oi_fingerprint(c, today)
+            stale = gex.oi_is_stale(fp, state.get("oi_prev", {}).get(ch["name"]))
             break
         except Exception as e:
             chain_errors.append(f"{ch['name']}: {e}")
@@ -102,19 +107,20 @@ def build_instrument(key, icfg, cfg, now, mode, state, warnings):
     if ch is not icfg["chains"][0]:
         warnings.append(f"{key}: {icfg['chains'][0]['name']} options unavailable, levels built from {ch['name']} instead.")
     state.setdefault("oi_last", {})[ch["name"]] = fp
+    state.setdefault("curves", {})[ch["name"]] = curves
     if stale:
         warnings.append(f"{key}: {ch['name']} open interest looks unchanged from yesterday. Walls may reflect yesterday's positioning.")
 
-    conv = get_conversion(key, ch, quote, meta, mode, state, today.isoformat())
+    conv = get_conversion(key, ch, quote, mode, state, today.isoformat(), warnings)
     additive = conv["type"] == "additive"
     to_index = (lambda f: f - conv["value"]) if additive else (lambda f: f / conv["value"])
     to_fut = (lambda x: x + conv["value"]) if additive else (lambda x: x * conv["value"])
     F = lambda x: gex.round_tick(to_fut(x), calc["tick"])
 
     spot = to_index(quote["last"])
-    cboe_spot = float(meta.get("current_price") or 0)
-    if cboe_spot and abs(spot / cboe_spot - 1) > 0.03:
-        warnings.append(f"{key}: futures-implied {ch['name']} ({spot:.2f}) is far from CBOE's last ({cboe_spot:.2f}). Double check levels.")
+    listed_spot = float(meta.get("current_price") or 0)
+    if listed_spot and abs(spot / listed_spot - 1) > 0.03:
+        warnings.append(f"{key}: futures-implied {ch['name']} ({spot:.2f}) is far from Yahoo's last ({listed_spot:.2f}). Double check levels.")
 
     res = gex.analyze(c, spot, calc["risk_free_rate"], ch["dividend_yield"], calc["profile_range_pct"],
                       calc["profile_steps"], calc["secondary_levels"])
@@ -154,7 +160,7 @@ def build_instrument(key, icfg, cfg, now, mode, state, warnings):
             "contracts_used": len(c["K"]), "options_time_utc": meta.get("timestamp"),
         },
         "conversion": {k: (round(v, 4) if isinstance(v, float) else v) for k, v in conv.items()},
-        "sources": {"price": quote["source"], "options": f"CBOE {ch['name']} (delayed)"},
+        "sources": {"price": quote["source"], "options": f"Yahoo {ch['name']} (delayed, {meta['prices']})"},
         "strikes": strikes,
         "profile": profile,
     }
@@ -190,17 +196,69 @@ def write_history(data, mode):
         w.writerows(rows)
 
 
+def session_wait(now, cfg):
+    """Minutes until the next update window if it opens soon today, else None."""
+    for key in ("morning_start", "evening_start"):
+        h, m = map(int, cfg["schedule"][key].split(":"))
+        start = now.replace(hour=h, minute=m, second=5, microsecond=0)
+        wait = (start - now).total_seconds() / 60
+        if 0 < wait <= cfg["schedule"]["early_wait_min"] and decide_mode(start, cfg, False) != "skip":
+            return wait
+    return None
+
+
+def publish():
+    return subprocess.run(["bash", str(ROOT / "publish.sh")]).returncode
+
+
+def loop(cfg, force):
+    """Refresh until the window closes. Every pass is saved, good or bad, so the page stays honest."""
+    sched = cfg["schedule"]
+    stop = time.time() + sched["max_session_min"] * 60
+    failed = False
+    if force:
+        failed = update(cfg, True) != 0
+        failed = publish() != 0 or failed
+    while time.time() < stop:
+        now = dt.datetime.now(ET)
+        if decide_mode(now, cfg, False) == "skip":
+            wait = session_wait(now, cfg)
+            if wait is None:
+                break
+            print(f"{now:%H:%M} ET: waiting {wait:.0f} min for the window to open", flush=True)
+            time.sleep(wait * 60)
+            continue
+        elif force:
+            force = False  # already updated a moment ago
+        else:
+            failed = update(cfg, False) != 0
+            failed = publish() != 0 or failed
+        minutes = sched["retry_min"] if failed else sched["refresh_min"]
+        print(f"next refresh in {minutes} min", flush=True)
+        time.sleep(minutes * 60)
+    return 1 if failed else 0
+
+
 def main():
     cfg = tomllib.loads((ROOT / "config.toml").read_text(encoding="utf-8"))
     now = dt.datetime.now(ET)
-    mode = decide_mode(now, cfg, "--force" in sys.argv)
-
     if "--check" in sys.argv:
+        mode = decide_mode(now, cfg, False)
+        if mode == "skip" and session_wait(now, cfg) is not None:
+            mode = "wait"
         print(mode)
         if os.environ.get("GITHUB_OUTPUT"):
             with open(os.environ["GITHUB_OUTPUT"], "a") as f:
                 f.write(f"mode={mode}\n")
         return 0
+    if "--loop" in sys.argv:
+        return loop(cfg, "--force" in sys.argv)
+    return update(cfg, "--force" in sys.argv)
+
+
+def update(cfg, force):
+    now = dt.datetime.now(ET)
+    mode = decide_mode(now, cfg, force)
     if mode == "skip":
         print(f"{now:%a %H:%M} ET: outside trading windows, nothing to do")
         return 0
@@ -212,7 +270,7 @@ def main():
     # First daytime run of a new day: yesterday's OI becomes the comparison. Evening runs reuse
     # the day's comparison, since OI doesn't change after the close.
     if mode != "evening" and state.get("oi_last_date") != today:
-        state["oi_prev"] = state.get("oi_last", {})
+        state["oi_prev"] = dict(state.get("oi_last", {}))  # a copy, or today's OI would overwrite it
         state["oi_last_date"] = today
 
     try:

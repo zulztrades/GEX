@@ -1,15 +1,15 @@
 name: Update GEX levels
 
-# GitHub cron runs in UTC. These times cover both EDT and EST; run.py checks the
-# New York clock and skips anything outside the trading windows, weekends and holidays.
+# GitHub often starts scheduled runs late or drops them, so there are many start attempts and any one
+# is enough: a run waits for the window to open, then refreshes every 15 min until it closes.
+# Times are UTC and cover both EDT and EST; run.py checks the New York clock, weekends and holidays.
 on:
   schedule:
-    # Morning 8:00 AM - 12:00 PM ET (every 20 min before the open, then every 30 min)
-    - cron: "0,20,40 12-14 * * 1-5"
-    - cron: "0,30 15-17 * * 1-5"
-    # Evening 7:00 - 9:30 PM ET, Sunday to Thursday (crosses midnight UTC)
-    - cron: "0,30 23 * * 0-4"
-    - cron: "0,30 0-2 * * 1-5"
+    - cron: "7,22,37,52 11-16 * * 1-5"  # morning window, 8:00 AM - 12:15 PM ET
+    - cron: "7,22,37,52 22,23 * * 0-4"  # evening window, 7:00 - 9:45 PM ET, Sunday to Thursday
+    - cron: "7,22,37,52 0-2 * * 1-5"    # evening window after midnight UTC
+  push:                           # code or settings changes update the page right away
+    paths: ["*.py", "config.toml", "requirements.txt", ".github/workflows/update.yml"]
   workflow_dispatch:              # "Run workflow" button: updates right away, any time
 
 permissions:
@@ -17,19 +17,19 @@ permissions:
 
 concurrency:
   group: gex-update
-  cancel-in-progress: false
+  cancel-in-progress: true   # the newest run takes over, so the button never waits
 
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v6
 
       - name: Check New York clock
         id: gate
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" != "schedule" ]; then
             echo "mode=manual" >> "$GITHUB_OUTPUT"
           else
             python3 run.py --check
@@ -45,25 +45,11 @@ jobs:
         if: steps.gate.outputs.mode != 'skip'
         run: pip install -r requirements.txt
 
-      - name: Build levels
-        id: build
-        if: steps.gate.outputs.mode != 'skip'
-        run: python run.py ${{ github.event_name == 'workflow_dispatch' && '--force' || '' }}
-
-      # Runs even when the build failed, so the page can show the failure warning.
+      # Saves every refresh, including failed ones, so the page can show the failure warning.
       # Each commit also counts as repo activity, so GitHub never disables this schedule.
-      - name: Publish
-        if: always() && steps.gate.outputs.mode != 'skip'
+      - name: Update until the session ends
+        if: steps.gate.outputs.mode != 'skip'
         run: |
           git config user.name "gex-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs data
-          if git diff --cached --quiet; then echo "nothing changed"; exit 0; fi
-          git commit -m "GEX update $(TZ=America/New_York date '+%Y-%m-%d %H:%M ET')"
-          # Each push starts a Pages rebuild on its own. Fail loudly if it never lands.
-          for i in 1 2 3; do
-            if git pull --rebase && git push; then exit 0; fi
-            sleep 5
-          done
-          echo "::error::Could not save the new data to the repo"
-          exit 1
+          python -u -W ignore run.py --loop ${{ github.event_name != 'schedule' && '--force' || '' }}

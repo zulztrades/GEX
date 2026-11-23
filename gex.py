@@ -53,9 +53,10 @@ def cnbc_quote(symbol):
 
 
 def yahoo_quote(symbol, now):
-    """Fallback. Settlement is approximated by the price at 4:00 PM ET (when ES/NQ settle)."""
+    """Settlement is approximated by the price at 4:00 PM ET (when ES/NQ settle)."""
     import yfinance as yf
-    bars = yf.Ticker(symbol).history(period="5d", interval="5m")
+    ticker = yf.Ticker(symbol)
+    bars = ticker.history(period="5d", interval="5m")
     if bars.empty:
         raise RuntimeError(f"Yahoo returned no bars for {symbol}")
     bars.index = bars.index.tz_convert(ET)
@@ -74,32 +75,40 @@ def yahoo_quote(symbol, now):
 
 
 def futures_quote(icfg, now):
-    errors = []
-    for fn in (lambda: cnbc_quote(icfg["cnbc_symbol"]), lambda: yahoo_quote(icfg["yahoo_symbol"], now)):
+    """Ask CNBC and Yahoo and keep the newest of each number, because CNBC sometimes serves old
+    cached quotes. CNBC wins ties on settlement (it has the official one)."""
+    quotes, errors = [], []
+    try:
+        quotes.append(cnbc_quote(icfg["cnbc_symbol"]))
+    except Exception as e:
+        errors.append(str(e))
+    contract = quotes[0]["contract"] if quotes else None
+    for symbol in ([f"{contract}.CME"] if contract else []) + [icfg["yahoo_symbol"]]:
         try:
-            return fn(), errors
+            quotes.append(yahoo_quote(symbol, now))
+            break
         except Exception as e:
             errors.append(str(e))
-    raise RuntimeError("All futures price sources failed: " + " | ".join(errors))
+    if not quotes:
+        raise RuntimeError("All futures price sources failed: " + " | ".join(errors))
+    last = max(quotes, key=lambda q: dt.datetime.fromisoformat(q["time"]))
+    settle = max(quotes, key=lambda q: q["settle_date"])
+    age = (now - dt.datetime.fromisoformat(last["time"])).total_seconds() / 60
+    return {
+        "last": last["last"], "time": last["time"], "source": last["source"], "age_min": age, "contract": contract,
+        "settle": settle["settle"], "settle_date": settle["settle_date"], "settle_source": settle["source"],
+    }
 
 
-def index_close(yahoo_symbol, date_iso, chain_meta):
-    """Close of the index/ETF on the settlement date (Yahoo, then CBOE as fallback)."""
-    try:
-        import yfinance as yf
-        h = yf.Ticker(yahoo_symbol).history(period="15d", interval="1d")
-        for ts, row in h.iterrows():
-            if ts.date().isoformat() == date_iso:
-                return float(row["Close"]), "Yahoo"
-    except Exception:
-        pass
-    # CBOE: "close" is the latest session's close, "prev_day_close" the one before.
-    last_day = (chain_meta.get("last_trade_time") or "")[:10]
-    if last_day == date_iso:
-        return float(chain_meta["close"]), "CBOE"
-    if last_day > date_iso and chain_meta.get("prev_day_close"):
-        return float(chain_meta["prev_day_close"]), "CBOE"
-    raise RuntimeError(f"No {yahoo_symbol} close found for {date_iso}")
+def index_close(yahoo_symbol, date_iso):
+    """(close, date) of the index/ETF on the settlement date, or the session before it if that day has none."""
+    import yfinance as yf
+    h = yf.Ticker(yahoo_symbol).history(period="15d", interval="1d", auto_adjust=False)
+    rows = [(ts.date().isoformat(), float(row["Close"])) for ts, row in h.iterrows() if row["Close"] > 0]
+    rows = [r for r in rows if r[0] <= date_iso]
+    if not rows:
+        raise RuntimeError(f"No {yahoo_symbol} close found for {date_iso}")
+    return rows[-1][1], rows[-1][0]
 
 
 # ---------- contract calendar ----------
@@ -132,16 +141,6 @@ def roll_week(d):
 
 
 # ---------- option chain ----------
-
-def fetch_chain(symbol, url_tpl):
-    raw = get_json(url_tpl.format(symbol=symbol))
-    data = raw["data"]
-    meta = {k: v for k, v in data.items() if k != "options"}
-    meta["timestamp"] = raw.get("timestamp")
-    if not data.get("options"):
-        raise RuntimeError(f"{symbol} chain is empty")
-    return meta, data["options"]
-
 
 def parse_chain(options, now, max_dte, min_hours, am_roots):
     """Keep contracts expiring within max_dte days that have OI and a usable IV."""

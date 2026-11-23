@@ -11,17 +11,16 @@ secondary_levels = 3       # extra big-gamma strikes listed under the walls
 tick = 0.25                # futures levels are rounded to this
 
 [schedule]
-# Your trading windows. Runs happen every 20-30 min inside them.
+# Your trading windows. The page refreshes on a timer inside them.
 morning_start = "08:00"    # pre-open: morning snapshot + open-interest check, ready before 8:30
 rth_start = "09:30"        # from here on, refreshes keep the morning's basis
 day_end = "12:15"          # last daytime refresh (12:00 run, with slack for GitHub delays)
 evening_start = "19:00"    # Globex evening session, Sunday to Thursday
 evening_end = "21:45"
-oi_retries = 2             # if open interest looks stale in the morning, retry this many times
-oi_retry_wait_min = 4      # minutes between those retries
-
-[sources]
-cboe_url = "https://cdn.cboe.com/api/global/delayed_quotes/options/{symbol}.json"
+refresh_min = 15           # minutes between refreshes
+retry_min = 5              # minutes to wait after a failed refresh
+early_wait_min = 80        # a run that GitHub starts this early waits for the window to open
+max_session_min = 335      # one run stays on at most this long (GitHub's limit is 360)
 
 # One block per instrument. "chains" are tried in order: the first that works is used.
 # conversion "additive": futures = index level + basis (ES settle - index close, prior day)
@@ -32,7 +31,7 @@ cnbc_symbol = "@SP.1"
 yahoo_symbol = "ES=F"
 chart_range_pct = 2.0      # bar chart zoom: +/- this % around price
 chains = [
-  { symbol = "_SPX", name = "SPX", conversion = "additive", yahoo_close = "^GSPC", dividend_yield = 0.013, am_roots = ["SPX"] },
+  { symbol = "^SPX", name = "SPX", conversion = "additive", yahoo_close = "^GSPC", dividend_yield = 0.013, am_roots = ["SPX"] },
 ]
 
 [instruments.NQ]
@@ -42,7 +41,7 @@ yahoo_symbol = "NQ=F"
 chart_range_pct = 2.5
 chains = [
   { symbol = "QQQ", name = "QQQ", conversion = "ratio", yahoo_close = "QQQ", dividend_yield = 0.006, am_roots = [] },
-  { symbol = "_NDX", name = "NDX", conversion = "additive", yahoo_close = "^NDX", dividend_yield = 0.007, am_roots = ["NDX"] },
+  { symbol = "^NDX", name = "NDX", conversion = "additive", yahoo_close = "^NDX", dividend_yield = 0.007, am_roots = ["NDX"] },
 ]
 
 [calendar]
