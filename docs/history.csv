@@ -17,4 +17,4 @@ date,time_et,es_contract,es_price,es_regime,es_flip,es_call_wall,es_put_wall,nq_
 2026-11-23,09:57,ESZ26,7208.25,negative,7470.25,7024.5,7024.5,NQZ26,26552.75,negative,26928.75,28081.25,26842.25,fresh,fresh,
 2026-11-24,08:00,ESZ26,7190.75,negative,7422.0,7017.25,7017.25,NQZ26,26376.75,negative,27090.5,28001.0,26353.75,fresh,fresh,
 2026-11-25,08:00,ESZ26,7079.0,negative,,7016.5,7016.5,NQZ26,25506.0,negative,,28001.0,26148.0,fresh,fresh,NQ: call wall is more than 8% from price. Treat it with caution.
-2026-11-27,08:57,ESZ26,7309.5,negative,7385.75,7013.0,7013.0,NQZ26,26689.5,positive,26296.0,25903.25,26053.25,fresh,unknown,"NQ: QQQ options unavailable, levels built from NDX instead."
+2026-11-27,09:12,ESZ26,7303.75,negative,7385.5,7013.0,7013.0,NQZ26,26663.75,positive,26294.75,25903.25,26053.25,fresh,unknown,"NQ: QQQ options unavailable, levels built from NDX instead."
